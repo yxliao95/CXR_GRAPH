@@ -6,13 +6,15 @@ import random
 import sys
 
 import torch
-from entity.models_multibert import EntityModel, FuseBertModel
+from entity.fusebert import EntityModel, FuseBertModel
 from entity.utils import NpEncoder, batchify, convert_dataset_to_samples
 from shared.const import get_binary_labelmap, task_ner_labels
 from shared.data_structures import Dataset
 from tqdm import tqdm
 from transformers import (
     AdamW,
+    AutoModel,
+    AutoTokenizer,
     BertModel,
     BertTokenizer,
     get_linear_schedule_with_warmup,
@@ -39,13 +41,12 @@ def save_model(model, output_dir):
 
 def init_model(args, num_ner_labels):
     logger.info("Initializing model...")
-    logger.info("Loading Bert from %s", args.model_name_or_path)
-    logger.info("Loading auxiliary Bert from %s", args.auxiliary_model_name_or_path)
     # Using a HuggingFace online model or a downloaded model
-    tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
+    logger.info("Loading Bert from %s", args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    bert = AutoModel.from_pretrained(args.model_name_or_path)
+    logger.info("Loading auxiliary Bert from %s", args.auxiliary_model_name_or_path)
     auxiliary_tokenizer = BertTokenizer.from_pretrained(args.auxiliary_model_name_or_path)
-
-    bert = BertModel.from_pretrained(args.model_name_or_path)
     auxiliary_bert = BertModel.from_pretrained(args.auxiliary_model_name_or_path)
 
     model = FuseBertModel(bert, auxiliary_bert, num_ner_labels=num_ner_labels, last_hidden_dim=150, width_embedding_dim=150, max_span_length=args.max_span_length)
@@ -57,7 +58,7 @@ def init_model(args, num_ner_labels):
 def load_model(model_dir):
     logger.info("Loading model from %s", model_dir)
     tokenizer = BertTokenizer.from_pretrained(os.path.join(model_dir, "tokenizer"))
-    auxiliary_tokenizer = BertTokenizer.from_pretrained(os.path.join(model_dir, "auxiliary_tokenizer"))
+    auxiliary_tokenizer = AutoTokenizer.from_pretrained(os.path.join(model_dir, "auxiliary_tokenizer"))
     model = torch.load(os.path.join(model_dir, "model.pth"))
     ent_model = EntityModel(tokenizer, auxiliary_tokenizer, model)
     return ent_model
@@ -78,7 +79,7 @@ def output_ner_predictions(model, batches, dataset, output_file):
             k = sample["doc_key"] + "-" + str(sample["sentence_ix"])
             ner_result[k] = []
             for span, pred in zip(sample["spans"], preds):
-                # span_id = "%s::%d::(%d,%d)" % (sample["doc_key"], sample["sentence_ix"], span[0] + off, span[1] + off)
+                pred = pred.item()
                 if pred == 0:
                     continue
                 ner_result[k].append([span[0] + off, span[1] + off, ner_id2label[pred]])
@@ -157,8 +158,8 @@ def get_args():
 
     parser.add_argument("--task", type=str, default="scierc", required=True, choices=["ace04", "ace05", "scierc"])
     parser.add_argument("--data_dir", type=str, required=True, help="path to the preprocessed dataset")
-    parser.add_argument("--output_dir", type=str, default="/root/workspace/cxr_graph/outputs/entity_model_default", help="output directory of the entity model")
-    parser.add_argument("--model_dir", type=str, default="/root/workspace/cxr_graph/models/entity_model_default", help="output directory of the entity model")
+    parser.add_argument("--output_dir", type=str, default="/root/autodl-tmp/cxr_graph/outputs/entity_model_default", help="output directory of the entity model")
+    parser.add_argument("--model_dir", type=str, default="/root/autodl-tmp/cxr_graph/models/entity_model_default", help="output directory of the entity model")
 
     parser.add_argument(
         "--model_name_or_path",
@@ -263,10 +264,10 @@ if __name__ == "__main__":
                     f1 = evaluate(model, dev_batches, dev_ner)
                     if f1 > best_result:
                         best_result = f1
-                        logger.info("(Epoch=%d) !!! Achieved best valid f1: %.2f", curr_epoch, f1 * 100)
+                        logger.info("(Epoch=%d) !!! Achieved best valid f1: %.3f", curr_epoch, f1 * 100)
                         save_model(model, args.model_dir)
                     else:
-                        logger.info("(Epoch=%d) Current dev f1: %.2f, best dev f1 = %.2f", curr_epoch, f1 * 100, best_result * 100)
+                        logger.info("(Epoch=%d) Current dev f1: %.3f, best dev f1 = %.3f", curr_epoch, f1 * 100, best_result * 100)
 
     if args.do_eval:
         model = load_model(args.model_dir)

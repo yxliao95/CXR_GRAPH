@@ -64,31 +64,42 @@ This is based on the PURE model. We modified the PURE model to be a binary class
 Exp 0, PURE-based model, CrossEntropyLoss, 2 labels:
 python /root/workspace/cxr_graph/run_entity_binary.py \
    --task scierc \
-   --model_name_or_path /root/workspace/hf_offline_models/scibert_scivocab_uncased \
-   --data_dir /root/workspace/data/scierc_data/processed_data/json \
-   --output_dir /root/workspace/cxr_graph/models/ent_scierc_scib_test_0 \
+   --model_name_or_path /root/autodl-tmp/hf_offline_models/scibert_scivocab_uncased \
+   --data_dir /root/autodl-tmp/data/scierc_data/processed_data/json \
+   --output_dir /root/autodl-tmp/cxr_graph/models/ent_scierc_scib_test_0 \
    --do_train --train_shuffle \
    --do_eval --eval_test \
    --task_learning_rate 5e-4 --context_window 300
 
-Exp 1, Fuse-bert model, BCEWithLogitsLoss, 1 labels:
-python /root/workspace/cxr_graph/run_entity_binary.py \
+Exp 1-3, Fuse-bert model, BCEWithLogitsLoss, 1 labels:
+python /root/workspace/cxr_graph/run_entity_fusebert.py \
    --task scierc \
-   --model_name_or_path /root/workspace/hf_offline_models/scibert_scivocab_uncased \
-   --auxiliary_model_name_or_path /root/workspace/hf_offline_models/bert-base-uncased \
-   --data_dir /root/workspace/data/scierc_data/processed_data/json \
-   --output_dir /root/workspace/cxr_graph/outputs/ent_scierc_scib_test_1 \
-   --model_dir /root/workspace/cxr_graph/models/ent_scierc_scib_test_1 \
+   --model_name_or_path /root/autodl-tmp/hg_offline_models/scibert_scivocab_uncased \
+   --auxiliary_model_name_or_path /root/autodl-tmp/hg_offline_models/bert-base-uncased \
+   --data_dir /root/autodl-tmp/data/scierc_data/processed_data/json \
+   --output_dir /root/autodl-tmp/cxr_graph/outputs/ent_scierc_scib_test_4 \
+   --model_dir /root/autodl-tmp/cxr_graph/models/ent_scierc_scib_test_4 \
    --do_train --train_shuffle \
    --do_eval --eval_test \
    --task_learning_rate 5e-4 --context_window 300
 
-### Eval
 
-python /root/workspace/cxr_graph/run_entity_binary.py \
-   --task scierc \
-   --model_name_or_path /root/workspace/hf_offline_models/scibert_scivocab_uncased \
-   --data_dir /root/workspace/data/scierc_data/processed_data/json \
-   --output_dir /root/workspace/cxr_graph/models/ent_scierc_scib_test_0 \
-   --do_eval --eval_test \
-   --task_learning_rate 5e-4 --context_window 300
+### Issues
+
+1. Fail to load tokenizer from local:
+
+When using `git clone repo` from huggingface, the downloaded model may fail to load the tokenizer since some of the config files are seemingly missed from the repo. My workaround is to use another machine to save the tokenizer and config files via `save_pretrained()`. Then copy the saved files to the model dir together with the downloaded model in your local machine.
+
+```
+from transformers import AutoTokenizer, AutoConfig
+
+tokenizer = AutoTokenizer.from_pretrained('hg_model_name')
+config = AutoConfig.from_pretrained('hg_model_name')
+tokenizer.save_pretrained('local_path')
+config.save_pretrained('local_path')
+
+# Including: config.json, special_tokens_map.json, tokenizer_config.json, tokenizer.json
+
+# Verify
+BertTokenizer.from_pretrained('local_path')
+```
